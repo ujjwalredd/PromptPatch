@@ -1,39 +1,45 @@
+<p align="center">
+  <img src="assets/promptpatch-logo.png" alt="PromptPatch MCP logo" width="720">
+</p>
+
 # PromptPatch MCP
 
-PromptPatch MCP is a local-first Model Context Protocol server for prompt diffs, rollback, releases, and security scans.
-It lets Claude Desktop, Cursor, Codex, or any MCP client checkpoint prompts during a conversation without a SaaS account or external service.
+**PromptPatch MCP: Git-style diffs, rollback, release tags, and security scans for AI prompts.**
 
-## What It Does
+PromptPatch MCP is a local-first Model Context Protocol server that lets Claude Desktop, Cursor, Codex, or any MCP client checkpoint prompts during a conversation. It stores prompt history in SQLite, exposes MCP tools for version control, and scans prompt content for common injection, exfiltration, secret-leakage, and dangerous-action patterns before storage.
 
-- `save_prompt` creates a versioned snapshot.
-- `get_prompt` retrieves `HEAD`, a version number, an `id:123` ref, or a tag.
-- `list_versions` shows prompt history.
-- `diff_versions` returns a unified diff between two versions.
-- `rollback` restores older content by creating a new version, preserving history.
-- `tag_release` tags a version like `v1.0` or `prod`.
-- `list_prompts` shows every tracked prompt.
-- `db_info` shows local database stats.
-- `scan_prompt_security` scans raw or stored prompt content for injection, exfiltration, dangerous-action, and secret patterns.
+No SaaS. No telemetry. No cloud dependency. One local database file.
 
-The database is one SQLite file. By default it lives at a relative project-local path:
+## Why This Exists
 
-```text
-.promptpatch/prompts.sqlite3
-```
+Prompt engineering is becoming software engineering.
 
-Override it with:
+But many production prompts still live in scattered docs, private chats, dashboards, or random files. A prompt starts working, someone changes two lines, behavior shifts, and nobody can say exactly what changed.
 
-```bash
-PROMPTPATCH_DB_PATH=.promptpatch/prompts.sqlite3
-```
+PromptPatch gives AI prompts the basics engineers expect:
 
-Security scanning defaults to `block`. Override it with:
+- history
+- diffs
+- rollback
+- release tags
+- security checks
+- local-first storage
 
-```bash
-PROMPTPATCH_SECURITY_MODE=warn
-```
+## Tools
 
-## Install Locally
+| Tool | Purpose |
+| --- | --- |
+| `save_prompt` | Save a versioned prompt snapshot. |
+| `get_prompt` | Retrieve `HEAD`, a version number, an `id:123` ref, or a tag. |
+| `list_versions` | Show prompt history. |
+| `diff_versions` | Return a unified diff between two versions. |
+| `rollback` | Restore older content by creating a new version. |
+| `tag_release` | Tag a version like `v1.0`, `prod`, or `experiment`. |
+| `list_prompts` | List every tracked prompt. |
+| `scan_prompt_security` | Scan raw or stored prompt content for risky patterns. |
+| `db_info` | Show local database stats and config. |
+
+## Quick Start
 
 From this repository:
 
@@ -51,9 +57,75 @@ python -m pip install -e ".[dev]"
 promptpatch-mcp
 ```
 
-## Claude Desktop Config
+The default SQLite database path is project-local:
 
-After installing `promptpatch-mcp` on your `PATH`, use this portable config:
+```text
+.promptpatch/prompts.sqlite3
+```
+
+Override it at process startup:
+
+```bash
+PROMPTPATCH_DB_PATH=.promptpatch/prompts.sqlite3
+```
+
+Security scanning defaults to `block`. To allow storage while still recording findings, switch to `warn`:
+
+```bash
+PROMPTPATCH_SECURITY_MODE=warn
+```
+
+## Demo Flow
+
+This is the core workflow:
+
+```text
+save_prompt -> save_prompt again -> diff_versions -> rollback
+```
+
+Save version 1:
+
+```json
+{
+  "name": "support_agent",
+  "content": "You are a concise support assistant.",
+  "message": "Initial prompt"
+}
+```
+
+Save version 2:
+
+```json
+{
+  "name": "support_agent",
+  "content": "You are a concise support assistant. Ask one clarifying question when needed.",
+  "message": "Add clarification rule"
+}
+```
+
+Diff the change:
+
+```json
+{
+  "name": "support_agent",
+  "from_ref": "1",
+  "to_ref": "HEAD"
+}
+```
+
+Rollback by creating a new history-preserving version:
+
+```json
+{
+  "name": "support_agent",
+  "ref": "1",
+  "message": "Rollback to simpler behavior"
+}
+```
+
+## MCP Client Config
+
+After installing `promptpatch-mcp` on your `PATH`, use this portable Claude Desktop config:
 
 ```json
 {
@@ -68,81 +140,29 @@ After installing `promptpatch-mcp` on your `PATH`, use this portable config:
 }
 ```
 
-For local development from the repository root:
+See [examples/claude_desktop_config.json](examples/claude_desktop_config.json) for a copy-paste config.
 
-```json
-{
-  "mcpServers": {
-    "promptpatch": {
-      "command": "uv",
-      "args": ["run", "promptpatch-mcp"],
-      "env": {
-        "PROMPTPATCH_DB_PATH": ".promptpatch/prompts.sqlite3"
-      }
-    }
-  }
-}
-```
+## Examples
 
-## Example Tool Flow
-
-Save a prompt:
-
-```json
-{
-  "name": "support_agent",
-  "content": "You are a concise support assistant. Ask one clarifying question when needed.",
-  "message": "Initial support prompt",
-  "security_mode": "block"
-}
-```
-
-Improve it:
-
-```json
-{
-  "name": "support_agent",
-  "content": "You are a concise support assistant. Ask one clarifying question when needed. Never invent policy details.",
-  "message": "Add anti-hallucination rule"
-}
-```
-
-Diff it:
-
-```json
-{
-  "name": "support_agent",
-  "from_ref": 1,
-  "to_ref": "HEAD"
-}
-```
-
-Tag it:
-
-```json
-{
-  "name": "support_agent",
-  "ref": "HEAD",
-  "tag": "v1.0"
-}
-```
-
-Use `tag:<name>` when a tag could be confused with a version shorthand, for example `tag:v1`.
+- [Basic flow](examples/basic_flow.md)
+- [Security scan](examples/security_scan.md)
+- [Claude Desktop config](examples/claude_desktop_config.json)
 
 ## Security Model
 
-- No cloud calls.
-- No prompt data leaves the local SQLite file.
-- Tool inputs are size-limited.
-- Prompt names and tags are validated.
-- SQL uses parameter binding.
-- Rollback never deletes history.
-- MCP tools do not accept arbitrary database paths; use `PROMPTPATCH_DB_PATH` at process startup.
-- Prompt saves are scanned before storage by default.
-- Obvious high-risk prompt injection, exfiltration, dangerous command, and secret patterns are blocked in `block` mode.
-- `warn` mode allows storage but returns and records security findings.
-- Secret-like findings are redacted in scan snippets.
-- Defensive phrases such as "never ignore previous instructions" are downgraded to reduce false positives.
+PromptPatch is a guardrail, not a perfect prompt-injection firewall.
+
+What it does:
+
+- keeps all prompt data local
+- stores data in SQLite
+- validates prompt names and tags
+- uses SQL parameter binding
+- size-limits tool inputs
+- blocks high-risk findings in `block` mode
+- records findings in prompt metadata in `warn` mode
+- redacts secret-like findings from scan snippets
+- preserves history during rollback
 
 Security modes:
 
@@ -152,7 +172,7 @@ warn   scan and allow, returning findings
 off    skip scanning for intentional local testing
 ```
 
-Scan raw content:
+Example scan:
 
 ```json
 {
@@ -160,16 +180,17 @@ Scan raw content:
 }
 ```
 
-Scan a stored prompt:
+Keep MCP clients configured with least-privilege tools, human approval for risky actions, sandboxing, and real secret management.
 
-```json
-{
-  "name": "support_agent",
-  "ref": "HEAD"
-}
-```
+## Roadmap
 
-This scanner is a guardrail, not a perfect prompt-injection firewall. Keep MCP clients configured with least-privilege tools, human approval for risky actions, sandboxing, and real secret management.
+- prompt branches
+- compare prompts across names
+- export/import JSON
+- prompt test snapshots
+- GitHub Actions demo
+- optional LangSmith importers
+- optional Braintrust importers
 
 ## Development
 
@@ -190,3 +211,13 @@ Inspect the SQLite database:
 ```bash
 sqlite3 .promptpatch/prompts.sqlite3
 ```
+
+## LinkedIn Launch Checklist
+
+Before posting:
+
+- make sure the repo has the logo rendered at the top
+- include the repo link in the first comment
+- use the hook: `Prompts should have diffs, rollback, and release tags.`
+- tag relevant companies only when the post is professional and constructive
+- keep the caption focused on the project first, story second

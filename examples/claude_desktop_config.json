@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "promptpatch": {
+      "command": "promptpatch-mcp",
+      "env": {
+        "PROMPTPATCH_DB_PATH": ".promptpatch/prompts.sqlite3",
+        "PROMPTPATCH_SECURITY_MODE": "block"
+      }
+    }
+  }
+}
